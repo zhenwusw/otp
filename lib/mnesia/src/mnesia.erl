@@ -149,7 +149,7 @@ val(Var) ->
 
 is_dollar_digits(Var) ->
     case atom_to_list(Var) of
-	"$" ++ Digs ->
+	[$$ | Digs] -> 
 	    is_digits(Digs);
 	_ ->
 	    false
@@ -167,7 +167,7 @@ is_digits([]) ->
 
 has_var(X) when is_atom(X) -> 
     if 
-	X =:= '_' ->
+	X == '_' -> 
 	    true;
 	is_atom(X) -> 
 	    is_dollar_digits(X);
@@ -185,7 +185,7 @@ has_var(_) -> false.
 
 e_has_var(_, 0) -> false;
 e_has_var(X, Pos) ->
-    case has_var(element(Pos, X)) of
+    case has_var(element(Pos, X))of
 	false -> e_has_var(X, Pos-1);
 	Other -> Other
     end.
@@ -194,18 +194,18 @@ e_has_var(X, Pos) ->
 %% Start and stop
 
 start() ->
-    {Time, Res} =  timer:tc(application, start, [?APPLICATION, temporary]),
+    {Time , Res} =  timer:tc(application, start, [?APPLICATION, temporary]),
     
     Secs = Time div 1000000,
     case Res of 
 	ok ->
-	    verbose("Mnesia started, ~p seconds~n", [Secs]),
+	    verbose("Mnesia started, ~p seconds~n",[ Secs]),
 	    ok;
 	{error, {already_started, mnesia}} ->
-	    verbose("Mnesia already started, ~p seconds~n", [Secs]),
+	    verbose("Mnesia already started, ~p seconds~n",[ Secs]),
 	    ok;
 	{error, R} ->
-	    verbose("Mnesia failed to start, ~p seconds: ~p~n", [Secs, R]),
+	    verbose("Mnesia failed to start, ~p seconds: ~p~n",[ Secs, R]),
 	    {error, R}
     end.
 
@@ -302,14 +302,14 @@ ms() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Activity mgt
 
--spec abort(_) -> no_return().
+-spec(abort/1 :: (_) -> no_return()).
 
 abort(Reason) -> 
     exit({aborted, Reason}).
 
 is_transaction() ->
     case get(mnesia_activity_state) of
-	{_, Tid, _Ts} when element(1, Tid) =:= tid ->
+	{_, Tid, _Ts} when element(1,Tid) == tid ->
 	    true;
 	_ ->
 	    false
@@ -317,33 +317,29 @@ is_transaction() ->
 
 transaction(Fun) ->
     transaction(get(mnesia_activity_state), Fun, [], infinity, ?DEFAULT_ACCESS, async).
-
 transaction(Fun, Retries) when is_integer(Retries), Retries >= 0 ->
     transaction(get(mnesia_activity_state), Fun, [], Retries, ?DEFAULT_ACCESS, async);
-transaction(Fun, Retries) when Retries =:= infinity ->
+transaction(Fun, Retries) when Retries == infinity ->
     transaction(get(mnesia_activity_state), Fun, [], Retries, ?DEFAULT_ACCESS, async);
 transaction(Fun, Args) ->
     transaction(get(mnesia_activity_state), Fun, Args, infinity, ?DEFAULT_ACCESS, async).
-
 transaction(Fun, Args, Retries) ->
     transaction(get(mnesia_activity_state), Fun, Args, Retries, ?DEFAULT_ACCESS, async).
 
 sync_transaction(Fun) ->
     transaction(get(mnesia_activity_state), Fun, [], infinity, ?DEFAULT_ACCESS, sync).
-
 sync_transaction(Fun, Retries) when is_integer(Retries), Retries >= 0 ->
     transaction(get(mnesia_activity_state), Fun, [], Retries, ?DEFAULT_ACCESS, sync);
-sync_transaction(Fun, Retries) when Retries =:= infinity ->
+sync_transaction(Fun, Retries) when Retries == infinity ->
     transaction(get(mnesia_activity_state), Fun, [], Retries, ?DEFAULT_ACCESS, sync);
 sync_transaction(Fun, Args) ->
     transaction(get(mnesia_activity_state), Fun, Args, infinity, ?DEFAULT_ACCESS, sync).
-
 sync_transaction(Fun, Args, Retries) ->
     transaction(get(mnesia_activity_state), Fun, Args, Retries, ?DEFAULT_ACCESS, sync).
 
 
 transaction(State, Fun, Args, Retries, Mod, Kind) 
-  when is_function(Fun), is_list(Args), Retries =:= infinity, is_atom(Mod) ->
+  when is_function(Fun), is_list(Args), Retries == infinity, is_atom(Mod) ->
     mnesia_tm:transaction(State, Fun, Args, Retries, Mod, Kind);
 transaction(State, Fun, Args, Retries, Mod, Kind)
   when is_function(Fun), is_list(Args), is_integer(Retries), Retries >= 0, is_atom(Mod) ->
@@ -448,7 +444,7 @@ write_lock_table(Tab) ->
 
 lock_record(Tid, Ts, Tab, Key, LockKind) when is_atom(Tab) ->
     Store = Ts#tidstore.store,
-    Oid = {Tab, Key},
+    Oid =  {Tab, Key},
     case LockKind of
 	read ->
 	    mnesia_locker:rlock(Tid, Store, Oid);
@@ -487,7 +483,7 @@ global_lock(Tid, Ts, Item, Kind, Nodes) when is_list(Nodes) ->
 	    Store = Ts#tidstore.store,
 	    GoodNs = good_global_nodes(Nodes),
 	    if
-		Kind =/= read, Kind =/= write ->
+		Kind /= read, Kind /= write ->
 		    abort({bad_type, Kind});
 		true ->
 		    mnesia_locker:global_lock(Tid, Store, Item, Kind, GoodNs)
@@ -505,13 +501,13 @@ good_global_nodes(Nodes) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Access within an activity - updates
 
-write(Val) when tuple_size(Val) > 2 ->
+write(Val) when is_tuple(Val), tuple_size(Val) > 2 -> 
     Tab = element(1, Val),
     write(Tab, Val, write);
 write(Val) ->
     abort({bad_type, Val}).
 
-s_write(Val) when tuple_size(Val) > 2 ->
+s_write(Val) when is_tuple(Val), tuple_size(Val) > 2 -> 
     Tab = element(1, Val),
     write(Tab, Val, sticky_write).
 
@@ -526,7 +522,7 @@ write(Tab, Val, LockKind) ->
     end.
 
 write(Tid, Ts, Tab, Val, LockKind)
-  when is_atom(Tab), Tab =/= schema, tuple_size(Val) > 2 ->
+  when is_atom(Tab), Tab /= schema, is_tuple(Val), tuple_size(Val) > 2 ->
     case element(1, Tid) of
 	ets ->
 	    ?ets_insert(Tab, Val),
@@ -552,7 +548,7 @@ write(_Tid, _Ts, Tab, Val, LockKind) ->
 write_to_store(Tab, Store, Oid, Val) ->
     case ?catch_val({Tab, record_validation}) of
 	{RecName, Arity, Type}
-	  when tuple_size(Val) =:= Arity, RecName =:= element(1, Val) ->
+	  when tuple_size(Val) == Arity, RecName == element(1, Val) ->
 	    case Type of
 		bag ->
 		    ?ets_insert(Store, {Oid, Val, write});
@@ -588,7 +584,7 @@ delete(Tab, Key, LockKind) ->
     end.
 
 delete(Tid, Ts, Tab, Key, LockKind)
-  when is_atom(Tab), Tab =/= schema ->
+  when is_atom(Tab), Tab /= schema ->
       case element(1, Tid) of
 	  ets ->
 	      ?ets_delete(Tab, Key),
@@ -613,13 +609,13 @@ delete(Tid, Ts, Tab, Key, LockKind)
 delete(_Tid, _Ts, Tab, _Key, _LockKind) ->
     abort({bad_type, Tab}).
 
-delete_object(Val) when tuple_size(Val) > 2 ->
+delete_object(Val) when is_tuple(Val), tuple_size(Val) > 2 ->
     Tab = element(1, Val),
     delete_object(Tab, Val, write);
 delete_object(Val) ->
     abort({bad_type, Val}).
 
-s_delete_object(Val) when tuple_size(Val) > 2 ->
+s_delete_object(Val) when is_tuple(Val), tuple_size(Val) > 2 ->
     Tab = element(1, Val),
     delete_object(Tab, Val, sticky_write);
 s_delete_object(Val) ->
@@ -636,7 +632,7 @@ delete_object(Tab, Val, LockKind) ->
     end.
 
 delete_object(Tid, Ts, Tab, Val, LockKind)
-  when is_atom(Tab), Tab =/= schema, tuple_size(Val) > 2 ->
+  when is_atom(Tab), Tab /= schema, is_tuple(Val), tuple_size(Val) > 2 ->
     case has_var(Val) of
 	false -> 
 	    do_delete_object(Tid, Ts, Tab, Val, LockKind);
@@ -708,7 +704,7 @@ read(Tab, Key, LockKind) ->
     end.
 
 read(Tid, Ts, Tab, Key, LockKind)
-  when is_atom(Tab), Tab =/= schema ->
+  when is_atom(Tab), Tab /= schema ->
     case element(1, Tid) of
 	ets ->
 	    ?ets_lookup(Tab, Key);
@@ -744,7 +740,7 @@ first(Tab) ->
     end.
     
 first(Tid, Ts, Tab)
-  when is_atom(Tab), Tab =/= schema ->
+  when is_atom(Tab), Tab /= schema ->
     case element(1, Tid) of
 	ets ->
 	    ?ets_first(Tab);
@@ -771,7 +767,7 @@ last(Tab) ->
     end.
 
 last(Tid, Ts, Tab)
-  when is_atom(Tab), Tab =/= schema ->
+  when is_atom(Tab), Tab /= schema ->
     case element(1, Tid) of
 	ets ->
 	    ?ets_last(Tab);
@@ -797,7 +793,7 @@ next(Tab,Key) ->
 	    abort(no_transaction)
     end.
 next(Tid,Ts,Tab,Key)
-  when is_atom(Tab), Tab =/= schema ->
+  when is_atom(Tab), Tab /= schema ->
     case element(1, Tid) of
 	ets ->
 	    ?ets_next(Tab,Key);
@@ -823,7 +819,7 @@ prev(Tab,Key) ->
 	    abort(no_transaction)
     end.
 prev(Tid,Ts,Tab,Key)
-  when is_atom(Tab), Tab =/= schema ->
+  when is_atom(Tab), Tab /= schema ->
     case element(1, Tid) of
 	ets ->
 	    ?ets_prev(Tab,Key);
@@ -843,7 +839,7 @@ prev(_Tid, _Ts,Tab,_) ->
 stored_keys(Tab,'$end_of_table',Prev,Ts,Op,Type) ->
     case ts_keys(Ts#tidstore.store,Tab,Op,Type,[]) of
 	[] -> '$end_of_table';
-	Keys when Type =:= ordered_set->
+	Keys when Type == ordered_set-> 
 	    get_ordered_tskey(Prev,Keys,Op);
 	Keys -> 
 	    get_next_tskey(Prev,Keys,Tab)
@@ -897,7 +893,7 @@ get_ordered_tskey(_, [],_) ->    '$end_of_table'.
 
 get_next_tskey(Key,Keys,Tab) ->
     Next = 
-	if Key =:= '$end_of_table' -> hd(Keys);
+	if Key == '$end_of_table' -> hd(Keys);
 	   true ->
 		case lists:dropwhile(fun(A) -> A /= Key end, Keys) of
 		    [] -> hd(Keys); %% First stored key
@@ -920,11 +916,11 @@ ts_keys(Store, Tab, Op, Type, Def) ->
     All = ?ets_match(Store, {{Tab,'$1'},'_','$2'}),
     Keys = ts_keys_1(All, Def),
     if 
-	Type =:= ordered_set, Op =:= prev ->
+	Type == ordered_set, Op == prev ->
 	    lists:reverse(lists:sort(Keys));
-	Type =:= ordered_set ->
+	Type == ordered_set ->
 	    lists:sort(Keys);
-	Op =:= next ->
+	Op == next ->
 	    lists:reverse(Keys);
 	true ->
 	    Keys
@@ -1003,7 +999,7 @@ foldr(ActivityId, Opaque, Fun, Acc, Tab, LockKind) ->
     {Type, TempPrev} = init_iteration(ActivityId, Opaque, Tab, LockKind),
     Prev = 
 	if 
-	    Type =:= ordered_set ->
+	    Type == ordered_set ->
 		lists:reverse(TempPrev);
 	    true ->      %% Order doesn't matter for set and bag
 		TempPrev %% Keep the order so we can use ordsets:del_element
@@ -1039,7 +1035,7 @@ init_iteration(ActivityId, Opaque, Tab, LockKind) ->
     Previous = add_previous(ActivityId, Opaque, Type, Tab),
     St = val({Tab, storage_type}),
     if 
-	St =:= unknown ->
+	St == unknown -> 
 	    ignore;
 	true ->
 	    mnesia_lib:db_fixtable(St, Tab, true)
@@ -1100,7 +1096,7 @@ add_written_to_bag([{_, _ , delete} | Tail], _Objs, _Ack) ->
 add_written_to_bag([{_, Val, delete_object} | Tail], Objs, Ack) ->
     add_written_to_bag(Tail, lists:delete(Val, Objs), lists:delete(Val, Ack)).
 
-match_object(Pat) when tuple_size(Pat) > 2 ->
+match_object(Pat) when is_tuple(Pat), tuple_size(Pat) > 2 ->
     Tab = element(1, Pat),
     match_object(Tab, Pat, read);
 match_object(Pat) ->
@@ -1117,7 +1113,7 @@ match_object(Tab, Pat, LockKind) ->
     end.
 
 match_object(Tid, Ts, Tab, Pat, LockKind) 
-  when is_atom(Tab), Tab =/= schema, tuple_size(Pat) > 2 ->
+  when is_atom(Tab), Tab /= schema, is_tuple(Pat), tuple_size(Pat) > 2 ->
     case element(1, Tid) of
 	ets ->
 	    mnesia_lib:db_match_object(ram_copies, Tab, Pat);
@@ -1198,7 +1194,7 @@ add_sel_match([Op={Oid, _, delete}|R], Objs, Type, Acc) ->
     case deloid(Oid, Objs) of
 	Objs ->
 	    add_sel_match(R, Objs, Type, [Op|Acc]);
-	NewObjs when Type =:= set ->
+	NewObjs when Type == set ->
 	    add_sel_match(R, NewObjs, Type, Acc);
 	NewObjs ->  %% If bag we may get more in next chunk
 	    add_sel_match(R, NewObjs, Type, [Op|Acc])
@@ -1207,7 +1203,7 @@ add_sel_match([Op = {_Oid, Val, delete_object}|R], Objs, Type, Acc) ->
     case lists:delete(Val, Objs) of
 	Objs -> 
 	    add_sel_match(R, Objs, Type, [Op|Acc]);
-	NewObjs when Type =:= set ->
+	NewObjs when Type == set ->
 	    add_sel_match(R, NewObjs, Type, Acc);
 	NewObjs ->
 	    add_sel_match(R, NewObjs, Type, [Op|Acc])
@@ -1267,7 +1263,7 @@ deloid(Oid, [H | T]) ->
 select(Tab, Pat) ->
     select(Tab, Pat, read).
 select(Tab, Pat, LockKind) 
-  when is_atom(Tab), Tab =/= schema, is_list(Pat) ->
+  when is_atom(Tab), Tab /= schema, is_list(Pat) ->
     case get(mnesia_activity_state) of
 	{?DEFAULT_ACCESS, Tid, Ts} ->
 	    select(Tid, Ts, Tab, Pat, LockKind);
@@ -1313,7 +1309,7 @@ fun_select(Tid, Ts, Tab, Spec, LockKind, TabPat, SelectFun) ->
 select_lock(Tid,Ts,LockKind,Spec,Tab) ->
     %% Avoid table lock if possible
     case Spec of
-	[{HeadPat,_, _}] when tuple_size(HeadPat) > 2 ->
+	[{HeadPat,_, _}] when is_tuple(HeadPat), tuple_size(HeadPat) > 2 ->
 	    Key = element(2, HeadPat),
 	    case has_var(Key) of
 		false -> lock_record(Tid, Ts, Tab, Key, LockKind);
@@ -1325,7 +1321,7 @@ select_lock(Tid,Ts,LockKind,Spec,Tab) ->
 
 %% Breakable Select
 select(Tab, Pat, NObjects, LockKind) 
-  when is_atom(Tab), Tab =/= schema, is_list(Pat), is_number(NObjects) ->
+  when is_atom(Tab), Tab /= schema, is_list(Pat), is_integer(NObjects) ->
     case get(mnesia_activity_state) of
 	{?DEFAULT_ACCESS, Tid, Ts} ->
 	    select(Tid, Ts, Tab, Pat, NObjects, LockKind);
@@ -1356,7 +1352,7 @@ fun_select(Tid, Ts, Tab, Spec, LockKind, TabPat, Init, NObjects, Node, Storage) 
 	    do_fixtable(Tab, Store),
 	    
 	    Written0 = ?ets_match_object(Store, {{TabPat, '_'}, '_', '_'}),	    
-	    case Written0 of
+	    case Written0 of 
 		[] ->  
 		    %% Nothing changed in the table during this transaction,
 		    %% Simple case get results from [d]ets
@@ -1366,7 +1362,7 @@ fun_select(Tid, Ts, Tab, Spec, LockKind, TabPat, Init, NObjects, Node, Storage) 
 		    %% in the transaction, have to cope with that.
 		    Type = val({Tab, setorbag}),
 		    Written = 
-			if Type =:= ordered_set -> %% Sort stable
+			if Type == ordered_set -> %% Sort stable
 				lists:keysort(1,Written0);
 			   true -> 
 				Written0
@@ -1392,8 +1388,8 @@ select(Cont) ->
 
 select_cont(_Tid,_Ts,'$end_of_table') ->
     '$end_of_table';
-select_cont(Tid,_Ts,State=#mnesia_select{tid=Tid, cont=Cont, orig=Ms})
-  when element(1,Tid) =:= ets ->
+select_cont(Tid,_Ts,State=#mnesia_select{tid=Tid,cont=Cont, orig=Ms}) 
+  when element(1,Tid) == ets ->
     case Cont of
 	'$end_of_table' -> '$end_of_table';
 	_ -> select_state(mnesia_lib:db_select_cont(ram_copies,Cont,Ms),State)
@@ -1434,7 +1430,7 @@ all_keys(Tab) ->
     end. 
 
 all_keys(Tid, Ts, Tab, LockKind) 
-  when is_atom(Tab), Tab =/= schema ->
+  when is_atom(Tab), Tab /= schema ->
     Pat0 = val({Tab, wild_pattern}),
     Pat = setelement(2, Pat0, '$1'),
     Keys = select(Tid, Ts, Tab, [{Pat, [], ['$1']}], LockKind),
@@ -1447,7 +1443,7 @@ all_keys(Tid, Ts, Tab, LockKind)
 all_keys(_Tid, _Ts, Tab, _LockKind) ->    
     abort({bad_type, Tab}).
 
-index_match_object(Pat, Attr) when tuple_size(Pat) > 2 ->
+index_match_object(Pat, Attr) when is_tuple(Pat), tuple_size(Pat) > 2 ->
     Tab = element(1, Pat),
     index_match_object(Tab, Pat, Attr, read);
 index_match_object(Pat, _Attr) ->
@@ -1464,7 +1460,7 @@ index_match_object(Tab, Pat, Attr, LockKind) ->
     end.
 
 index_match_object(Tid, Ts, Tab, Pat, Attr, LockKind) 
-  when is_atom(Tab), Tab =/= schema, tuple_size(Pat) > 2 ->
+  when is_atom(Tab), Tab /= schema, is_tuple(Pat), tuple_size(Pat) > 2 ->
     case element(1, Tid) of
 	ets ->
 	    dirty_index_match_object(Tab, Pat, Attr); % Should be optimized?
@@ -1500,7 +1496,7 @@ index_read(Tab, Key, Attr) ->
     end.
 
 index_read(Tid, Ts, Tab, Key, Attr, LockKind) 
-  when is_atom(Tab), Tab =/= schema ->
+  when is_atom(Tab), Tab /= schema ->
     case element(1, Tid) of
 	ets ->
 	    dirty_index_read(Tab, Key, Attr); % Should be optimized?
@@ -1529,7 +1525,7 @@ index_read(_Tid, _Ts, Tab, _Key, _Attr, _LockKind) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Dirty access regardless of activities - updates
 
-dirty_write(Val) when tuple_size(Val) > 2  ->
+dirty_write(Val) when is_tuple(Val), tuple_size(Val) > 2  ->
     Tab = element(1, Val),
     dirty_write(Tab, Val);
 dirty_write(Val) ->
@@ -1539,10 +1535,10 @@ dirty_write(Tab, Val) ->
     do_dirty_write(async_dirty, Tab, Val).
 
 do_dirty_write(SyncMode, Tab, Val)
-  when is_atom(Tab), Tab =/= schema, tuple_size(Val) > 2 ->
+  when is_atom(Tab), Tab /= schema, is_tuple(Val), tuple_size(Val) > 2 ->
     case ?catch_val({Tab, record_validation}) of
 	{RecName, Arity, _Type}
-	when tuple_size(Val) =:= Arity, RecName =:= element(1, Val) ->
+	when tuple_size(Val) == Arity, RecName == element(1, Val) ->
 	    Oid = {Tab, element(2, Val)},
 	    mnesia_tm:dirty(SyncMode, {Oid, Val, write});
 	{'EXIT', _} ->
@@ -1561,13 +1557,13 @@ dirty_delete(Oid) ->
 dirty_delete(Tab, Key) ->
     do_dirty_delete(async_dirty, Tab, Key).
     
-do_dirty_delete(SyncMode, Tab, Key) when is_atom(Tab), Tab =/= schema  ->
+do_dirty_delete(SyncMode, Tab, Key) when is_atom(Tab), Tab /= schema  ->
     Oid = {Tab, Key},
     mnesia_tm:dirty(SyncMode, {Oid, Oid, delete});
 do_dirty_delete(_SyncMode, Tab, _Key) ->
     abort({bad_type, Tab}).
 
-dirty_delete_object(Val) when tuple_size(Val) > 2 ->
+dirty_delete_object(Val) when is_tuple(Val), tuple_size(Val) > 2 ->
     Tab = element(1, Val),
     dirty_delete_object(Tab, Val);
 dirty_delete_object(Val) ->
@@ -1577,7 +1573,7 @@ dirty_delete_object(Tab, Val) ->
     do_dirty_delete_object(async_dirty, Tab, Val).
 
 do_dirty_delete_object(SyncMode, Tab, Val)
-  when is_atom(Tab), Tab =/= schema, tuple_size(Val) > 2 ->
+    when is_atom(Tab), Tab /= schema, is_tuple(Val), tuple_size(Val) > 2 ->
     Oid = {Tab, element(2, Val)},
     case has_var(Val) of
 	false -> 
@@ -1600,7 +1596,7 @@ dirty_update_counter(Tab, Key, Incr) ->
     do_dirty_update_counter(async_dirty, Tab, Key, Incr).
     
 do_dirty_update_counter(SyncMode, Tab, Key, Incr)
-  when is_atom(Tab), Tab =/= schema, is_integer(Incr) ->
+  when is_atom(Tab), Tab /= schema, is_integer(Incr) ->
     case ?catch_val({Tab, record_validation}) of
 	{RecName, 3, set} ->
 	    Oid = {Tab, Key},
@@ -1620,7 +1616,7 @@ dirty_read(Oid) ->
     abort({bad_type, Oid}).
 
 dirty_read(Tab, Key)
-  when is_atom(Tab), Tab =/= schema ->
+  when is_atom(Tab), Tab /= schema ->
 %%    case catch ?ets_lookup(Tab, Key) of
 %%        {'EXIT', _} ->
             %% Bad luck, we have to perform a real lookup
@@ -1631,14 +1627,14 @@ dirty_read(Tab, Key)
 dirty_read(Tab, _Key) ->
     abort({bad_type, Tab}).
 
-dirty_match_object(Pat) when tuple_size(Pat) > 2 ->
+dirty_match_object(Pat) when is_tuple(Pat), tuple_size(Pat) > 2 ->
     Tab = element(1, Pat),
     dirty_match_object(Tab, Pat);
 dirty_match_object(Pat) ->
     abort({bad_type, Pat}).
     
 dirty_match_object(Tab, Pat)
-  when is_atom(Tab), Tab =/= schema, tuple_size(Pat) > 2 ->
+  when is_atom(Tab), Tab /= schema, is_tuple(Pat), tuple_size(Pat) > 2 ->
     dirty_rpc(Tab, ?MODULE, remote_dirty_match_object, [Tab, Pat]);
 dirty_match_object(Tab, Pat) ->
     abort({bad_type, Tab, Pat}).
@@ -1666,14 +1662,14 @@ remote_dirty_match_object(Tab, Pat, []) ->
 remote_dirty_match_object(Tab, Pat, _PosList) ->
     abort({bad_type, Tab, Pat}).
 
-dirty_select(Tab, Spec) when is_atom(Tab), Tab =/= schema, is_list(Spec) ->
+dirty_select(Tab, Spec) when is_atom(Tab), Tab /= schema, is_list(Spec) ->
     dirty_rpc(Tab, ?MODULE, remote_dirty_select, [Tab, Spec]);
 dirty_select(Tab, Spec) ->
     abort({bad_type, Tab, Spec}).
 
 remote_dirty_select(Tab, Spec) ->
     case Spec of
-	[{HeadPat, _, _}] when tuple_size(HeadPat) > 2 ->
+	[{HeadPat, _, _}] when is_tuple(HeadPat), tuple_size(HeadPat) > 2 ->
 	    Key = element(2, HeadPat),
 	    case has_var(Key) of
 		false ->
@@ -1687,7 +1683,7 @@ remote_dirty_select(Tab, Spec) ->
     end.
 
 remote_dirty_select(Tab, [{HeadPat,_, _}] = Spec, [Pos | Tail])
-  when tuple_size(HeadPat) > 2, Pos =< tuple_size(HeadPat) ->
+  when is_tuple(HeadPat), tuple_size(HeadPat) > 2, Pos =< tuple_size(HeadPat) ->
     Key = element(Pos, HeadPat),
     case has_var(Key) of
 	false ->
@@ -1714,7 +1710,7 @@ dirty_sel_cont(#mnesia_select{cont='$end_of_table'}) -> '$end_of_table';
 dirty_sel_cont(#mnesia_select{node=Node,tab=Tab,storage=Type,cont=Cont,orig=Ms}) ->
     do_dirty_rpc(Tab,Node,mnesia_lib,db_select_cont,[Type,Cont,Ms]).
 
-dirty_all_keys(Tab) when is_atom(Tab), Tab =/= schema ->
+dirty_all_keys(Tab) when is_atom(Tab), Tab /= schema ->
     case ?catch_val({Tab, wild_pattern}) of
 	{'EXIT', _} ->
 	    abort({no_exists, Tab});
@@ -1729,14 +1725,14 @@ dirty_all_keys(Tab) when is_atom(Tab), Tab =/= schema ->
 dirty_all_keys(Tab) ->
     abort({bad_type, Tab}).
     
-dirty_index_match_object(Pat, Attr) when tuple_size(Pat) > 2 ->
+dirty_index_match_object(Pat, Attr) when is_tuple(Pat), tuple_size(Pat) > 2 ->
     Tab = element(1, Pat),
     dirty_index_match_object(Tab, Pat, Attr);
 dirty_index_match_object(Pat, _Attr) ->
     abort({bad_type, Pat}).
 
 dirty_index_match_object(Tab, Pat, Attr) 
-  when is_atom(Tab), Tab =/= schema, tuple_size(Pat) > 2 ->
+  when is_atom(Tab), Tab /= schema, is_tuple(Pat), tuple_size(Pat) > 2 ->
     case mnesia_schema:attr_tab_to_pos(Tab, Attr) of
 	Pos when Pos =< tuple_size(Pat) ->
 	    case has_var(element(2, Pat)) of
@@ -1758,7 +1754,7 @@ dirty_index_match_object(Tab, Pat, Attr)
 dirty_index_match_object(Tab, Pat, _Attr) ->
     abort({bad_type, Tab, Pat}).
 
-dirty_index_read(Tab, Key, Attr) when is_atom(Tab), Tab =/= schema ->
+dirty_index_read(Tab, Key, Attr) when is_atom(Tab), Tab /= schema ->
     Pos = mnesia_schema:attr_tab_to_pos(Tab, Attr),
     case has_var(Key) of
 	false ->
@@ -1769,27 +1765,27 @@ dirty_index_read(Tab, Key, Attr) when is_atom(Tab), Tab =/= schema ->
 dirty_index_read(Tab, _Key, _Attr) ->
     abort({bad_type, Tab}).
 
-dirty_slot(Tab, Slot) when is_atom(Tab), Tab =/= schema, is_integer(Slot)  ->
+dirty_slot(Tab, Slot) when is_atom(Tab), Tab /= schema, is_integer(Slot)  ->
     dirty_rpc(Tab, mnesia_lib, db_slot, [Tab, Slot]);
 dirty_slot(Tab, Slot) ->
     abort({bad_type, Tab, Slot}).
 
-dirty_first(Tab) when is_atom(Tab), Tab =/= schema ->
+dirty_first(Tab) when is_atom(Tab), Tab /= schema ->
     dirty_rpc(Tab, mnesia_lib, db_first, [Tab]);
 dirty_first(Tab) ->
     abort({bad_type, Tab}).
 
-dirty_last(Tab) when is_atom(Tab), Tab =/= schema ->
+dirty_last(Tab) when is_atom(Tab), Tab /= schema ->
     dirty_rpc(Tab, mnesia_lib, db_last, [Tab]);
 dirty_last(Tab) ->
     abort({bad_type, Tab}).
 
-dirty_next(Tab, Key) when is_atom(Tab), Tab =/= schema ->
+dirty_next(Tab, Key) when is_atom(Tab), Tab /= schema ->
     dirty_rpc(Tab, mnesia_lib, db_next_key, [Tab, Key]);
 dirty_next(Tab, _Key) ->
     abort({bad_type, Tab}).
 
-dirty_prev(Tab, Key) when is_atom(Tab), Tab =/= schema ->
+dirty_prev(Tab, Key) when is_atom(Tab), Tab /= schema ->
     dirty_rpc(Tab, mnesia_lib, db_prev_key, [Tab, Key]);
 dirty_prev(Tab, _Key) ->
     abort({bad_type, Tab}).
@@ -1813,7 +1809,7 @@ do_dirty_rpc(Tab, Node, M, F, Args) ->
 		    mnesia:abort({ErrorTag, Args});
 		NewNode ->
 		    case get(mnesia_activity_state) of
-			{_Mod, #tid{}, _Ts} ->
+			{_Mod, Tid, _Ts} when is_record(Tid, tid) ->
 			    %% In order to perform a consistent
 			    %% retry of a transaction we need
 			    %% to acquire the lock on the NewNode.
@@ -1854,6 +1850,7 @@ table_info(Tab, Item) ->
 table_info(_Tid, _Ts, Tab, Item) ->
     any_table_info(Tab, Item).
 
+
 any_table_info(Tab, Item) when is_atom(Tab) ->    
     case Item of
 	master_nodes ->
@@ -1880,7 +1877,9 @@ any_table_info(Tab, Item) when is_atom(Tab) ->
 		[] ->
 		    abort({no_exists, Tab, Item});
 		Props ->
-		    [any_table_info_1(Prop) || Prop <- Props]
+		    lists:map(fun({setorbag, Type}) -> {type, Type};
+				 (Prop) -> Prop end, 
+			      Props) 
 	    end;
 	name ->
 	    Tab;
@@ -1894,9 +1893,6 @@ any_table_info(Tab, Item) when is_atom(Tab) ->
     end;
 any_table_info(Tab, _Item) ->
     abort({bad_type, Tab}).
-
-any_table_info_1({setorbag, Type}) -> {type, Type};
-any_table_info_1(Prop) -> Prop.
 
 raw_table_info(Tab, Item) ->
     case ?catch_val({Tab, storage_type}) of
@@ -2037,8 +2033,8 @@ display_tab_info() ->
 			     read_write ->
 				 table_info(T, where_to_commit)
 			 end,
-		     case lists:keyfind(Rpat, 1, Acc) of
-			 {_Rpat, Rtabs} ->
+		     case lists:keysearch(Rpat, 1, Acc) of
+			 {value, {_Rpat, Rtabs}} -> 
 			     lists:keyreplace(Rpat, 1, Acc, {Rpat, [T | Rtabs]});
 			 false ->
 			     [{Rpat, [T]} | Acc]
@@ -2160,8 +2156,8 @@ system_info2(version) ->
     case ?catch_val(version) of
 	{'EXIT', _} -> 
 	    Apps = application:loaded_applications(),
-	    case lists:keyfind(?APPLICATION, 1, Apps) of
-		{_Name, _Desc, Version} ->
+	    case lists:keysearch(?APPLICATION, 1, Apps) of
+		{value, {_Name, _Desc, Version}} ->
 		    Version;
 		false ->
 		    %% Ensure that it does not match
@@ -2520,17 +2516,17 @@ set_master_nodes(Tab, Nodes) when is_list(Nodes) ->
 		    Res = 
 			case mnesia_schema:read_cstructs_from_disc() of
 			    {ok, Cstructs} ->
-				case lists:keyfind(Tab, 2, Cstructs) of
-				    false ->
-					{error, {no_exists, Tab}};
-				    Cs ->
+				case lists:keysearch(Tab, 2, Cstructs) of
+				    {value, Cs} ->
 					case Nodes -- mnesia_lib:copy_holders(Cs) of
 					    [] ->
 						Args = [{Tab , Nodes}],
 						mnesia_recover:log_master_nodes(Args, UseDir, IsRunning);
 					    BadNodes ->
 						{error, {no_exists, Tab,  BadNodes}}
-					end
+					end;
+				    false ->
+					{error, {no_exists, Tab}}
 				end;
 			    {error, Reason} ->
 				{error, Reason}
@@ -2568,7 +2564,7 @@ snmp_open_table(Tab, Us) ->
 snmp_close_table(Tab) ->  
     mnesia_schema:del_snmp(Tab).
 
-snmp_get_row(Tab, RowIndex) when is_atom(Tab), Tab =/= schema, is_list(RowIndex) ->
+snmp_get_row(Tab, RowIndex) when is_atom(Tab), Tab /= schema, is_list(RowIndex) ->
     case get(mnesia_activity_state) of
  	{Mod, Tid, Ts=#tidstore{store=Store}} when element(1, Tid) =:= tid ->
 	    case snmp_oid_to_mnesia_key(RowIndex, Tab) of
@@ -2604,10 +2600,10 @@ snmp_get_row(Tab, _RowIndex) ->
 
 %%%%%%%%%%%%%
 
-snmp_get_next_index(Tab, RowIndex) when is_atom(Tab), Tab =/= schema, is_list(RowIndex) ->
+snmp_get_next_index(Tab, RowIndex) when is_atom(Tab), Tab /= schema, is_list(RowIndex) ->
     {Next,OrigKey} = dirty_rpc(Tab, mnesia_snmp_hook, get_next_index, [Tab, RowIndex]),
     case get(mnesia_activity_state) of
-	{_Mod, Tid, #tidstore{store=Store}} when element(1, Tid) =:= tid ->
+ 	{_Mod, Tid, #tidstore{store=Store}} when element(1, Tid) =:= tid ->		
 	    case OrigKey of
 		undefined ->
 		    snmp_order_keys(Store, Tab, RowIndex, []);
@@ -2646,7 +2642,7 @@ get_ordered_snmp_key(_, []) ->
 
 %%%%%%%%%%
 
-snmp_get_mnesia_key(Tab, RowIndex) when is_atom(Tab), Tab =/= schema, is_list(RowIndex) ->
+snmp_get_mnesia_key(Tab, RowIndex) when is_atom(Tab), Tab /= schema, is_list(RowIndex) ->
     case get(mnesia_activity_state) of
  	{_Mod, Tid, Ts} when element(1, Tid) =:= tid ->
 	    Res = dirty_rpc(Tab,mnesia_snmp_hook,get_mnesia_key,[Tab,RowIndex]),
@@ -2760,12 +2756,13 @@ pre_qlc(Opts, Tab) ->
     {_,Tid,_} = 
 	case get(mnesia_activity_state) of
 	    undefined ->
-		case lists:keyfind(parent_value, 1, Opts) of
-		    {parent_value, {mnesia_activity, undefined}} ->
+		case lists:keysearch(parent_value, 1, Opts) of
+		    {value, {parent_value,{mnesia_activity,undefined}}} ->
 			abort(no_transaction);
-		    {parent_value, {mnesia_activity, Aid}} ->
-			{stop_fun, Stop} = lists:keyfind(stop_fun, 1, Opts),
-			put_activity_id(Aid, Stop),
+		    {value, {parent_value,{mnesia_activity,Aid}}} ->
+			{value,{stop_fun,Stop}} = 
+			    lists:keysearch(stop_fun,1,Opts),
+			put_activity_id(Aid,Stop),
 			Aid;
 		    _ ->
 			abort(no_transaction)
@@ -2808,8 +2805,8 @@ qlc_opts(Option, Keys) ->
     qlc_opts([Option], Keys, []).
 
 qlc_opts(Opts, [{Key,Def}|Keys], Acc) ->
-    Opt = case lists:keyfind(Key,1, Opts) of
-	      {Key, Value} ->
+    Opt = case lists:keysearch(Key,1, Opts) of
+	      {value, {Key,Value}} ->
 		  Value;
 	      false ->
 		  Def

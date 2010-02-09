@@ -50,7 +50,7 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-init_state(_Tab, undefined) ->
+init_state(_Tab, InitialState) when InitialState == undefined ->
     #old_hash_state{n_fragments     = 1,
 		    next_n_to_split = 1,
 		    n_doubles       = 0};
@@ -62,12 +62,13 @@ init_state(_Tab, FH) when is_record(FH, frag_hash) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-add_frag(#old_hash_state{n_doubles = L, n_fragments = N,
-			 next_n_to_split = SplitN} = State) ->
+add_frag(State) when is_record(State, old_hash_state) ->
+    SplitN = State#old_hash_state.next_n_to_split,
     P = SplitN + 1,
-    NewN = N + 1,
+    L = State#old_hash_state.n_doubles,
+    NewN = State#old_hash_state.n_fragments + 1,
     State2 = case trunc(math:pow(2, L)) + 1 of
-		 P2 when P2 =:= P ->
+		 P2 when P2 == P ->
 		     State#old_hash_state{n_fragments = NewN,
 					  next_n_to_split = 1,
 					  n_doubles = L + 1};
@@ -100,8 +101,10 @@ del_frag(State) when is_record(State, old_hash_state) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-key_to_frag_number(#old_hash_state{n_doubles = L, next_n_to_split = P}, Key) ->
+key_to_frag_number(State, Key) when is_record(State, old_hash_state) ->
+    L = State#old_hash_state.n_doubles,
     A = erlang:hash(Key, trunc(math:pow(2, L))),
+    P = State#old_hash_state.next_n_to_split,
     if
 	A < P ->
 	    erlang:hash(Key, trunc(math:pow(2, L + 1)));
@@ -111,8 +114,7 @@ key_to_frag_number(#old_hash_state{n_doubles = L, next_n_to_split = P}, Key) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-match_spec_to_frag_numbers(#old_hash_state{n_fragments = NFrags} = State,
-			   MatchSpec) ->
+match_spec_to_frag_numbers(State, MatchSpec) when is_record(State, old_hash_state) ->
     case MatchSpec of
 	[{HeadPat, _, _}] when is_tuple(HeadPat), tuple_size(HeadPat) > 2 ->
 	    KeyPat = element(2, HeadPat),
@@ -120,10 +122,10 @@ match_spec_to_frag_numbers(#old_hash_state{n_fragments = NFrags} = State,
 		false ->
 		    [key_to_frag_number(State, KeyPat)];
 		true ->
-		    lists:seq(1, NFrags)
+		    lists:seq(1, State#old_hash_state.n_fragments)
 	    end;
 	_ -> 
-	    lists:seq(1, NFrags)
+	    lists:seq(1, State#old_hash_state.n_fragments)
     end.
 
 has_var(Pat) ->

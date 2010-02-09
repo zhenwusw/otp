@@ -390,8 +390,8 @@ schedule_late_disc_load(Tabs, Reason) ->
     MsgTag = late_disc_load,
     try_schedule_late_disc_load(Tabs, Reason, MsgTag).
 
-try_schedule_late_disc_load([], _Reason, MsgTag)
-  when MsgTag =/= schema_is_merged ->
+try_schedule_late_disc_load(Tabs, _Reason, MsgTag)
+  when Tabs == [], MsgTag /= schema_is_merged ->
     ignore;
 try_schedule_late_disc_load(Tabs, Reason, MsgTag) ->
     GetIntents =
@@ -635,9 +635,10 @@ handle_call(get_cstructs, From, State) ->
     noreply(State);
 
 handle_call({schema_is_merged, [], late_merge, []}, From, 
-	    #state{schema_is_merged = Merged, early_msgs = Msgs} = State) ->
+	    State = #state{schema_is_merged = Merged}) ->
     case Merged of
-	{false, Node} when Node =:= node(From) ->
+	{false, Node} when Node == node(From) ->
+	    Msgs = State#state.early_msgs,
 	    State1 = State#state{early_msgs = [], schema_is_merged = true},
 	    handle_early_msgs(lists:reverse(Msgs), State1);
 	_ ->
@@ -649,6 +650,7 @@ handle_call({schema_is_merged, [], late_merge, []}, From,
 
 handle_call({schema_is_merged, TabsR, Reason, RemoteLoaders}, From, State) ->
     State2 = late_disc_load(TabsR, Reason, RemoteLoaders, From, State),
+
     %% Handle early messages
     Msgs = State2#state.early_msgs,
     State3 = State2#state{early_msgs = [], schema_is_merged = true},
@@ -732,10 +734,9 @@ handle_call({net_load, Tab, Cs}, From, State) ->
 	end,
     noreply(State2);
 
-handle_call(Msg, From,
-	    #state{early_msgs = Msgs, schema_is_merged = SIM} = State)
-  when SIM =/= true ->
+handle_call(Msg, From, State) when State#state.schema_is_merged /= true ->
     %% Buffer early messages
+    Msgs = State#state.early_msgs,
     noreply(State#state{early_msgs = [{call, Msg, From} | Msgs]});
 
 handle_call({late_disc_load, Tabs, Reason, RemoteLoaders}, From, State) ->
@@ -796,7 +797,7 @@ late_disc_load(TabsR, Reason, RemoteLoaders, From,
 			 end,
 		     case gb_sets:is_member(Tab, LocalTabs) of
 			 true -> 
-			     case ?catch_val({Tab, where_to_read}) =:= node() of
+			     case ?catch_val({Tab, where_to_read}) == node() of
 				 true -> Acc;
 				 false ->
 				     case gb_trees:is_defined(Tab,LQ) of
@@ -959,9 +960,9 @@ handle_cast({merging_schema, Node}, State) ->
 	    noreply(State)
     end;
 
-handle_cast(Msg, #state{schema_is_merged = IsMerged,
-			early_msgs = Msgs} = State) when IsMerged =/= true ->
+handle_cast(Msg, State) when State#state.schema_is_merged /= true ->
     %% Buffer early messages
+    Msgs = State#state.early_msgs,
     noreply(State#state{early_msgs = [{cast, Msg} | Msgs]});
 
 %% This must be done after schema_is_merged otherwise adopt_orphan
@@ -1158,8 +1159,8 @@ handle_info(Done = #loader_done{worker_pid=WPid, table_name=Tab}, State0) ->
 		end,
 		case ?catch_val({Tab, active_replicas}) of
 		    [_|_] -> % still available elsewhere
-			{_, Worker} = lists:keyfind(WPid,1,get_loaders(State0)),
-			add_loader(Tab, Worker, State1);
+			{value,{_,Worker}} = lists:keysearch(WPid,1,get_loaders(State0)),
+			add_loader(Tab,Worker,State1);
 		    _ ->
 			State1
 		end
@@ -1167,9 +1168,9 @@ handle_info(Done = #loader_done{worker_pid=WPid, table_name=Tab}, State0) ->
     State3 = opt_start_worker(State2),
     noreply(State3);
 
-handle_info(#sender_done{worker_pid = Pid, worker_res = Res}, State)  ->
+handle_info(#sender_done{worker_pid=Pid, worker_res=Res}, State)  ->
     Senders = get_senders(State),
-    {Pid, _Worker} = lists:keyfind(Pid, 1, Senders),
+    {value, {Pid,_Worker}} = lists:keysearch(Pid, 1, Senders),
     if
 	Res == ok ->	    
 	    State2 = State#state{sender_pid = lists:keydelete(Pid, 1, Senders)},
@@ -1227,9 +1228,9 @@ handle_info({From, get_state}, State) ->
     noreply(State);
 
 %% No real need for buffering
-handle_info(Msg, #state{schema_is_merged = IsMerged,
-			early_msgs = Msgs} = State) when IsMerged =/= true ->
+handle_info(Msg, State) when State#state.schema_is_merged /= true ->
     %% Buffer early messages
+    Msgs = State#state.early_msgs,
     noreply(State#state{early_msgs = [{info, Msg} | Msgs]});
 
 handle_info({'EXIT', Pid, wait_for_tables_timeout}, State) ->
@@ -1622,8 +1623,9 @@ drop_loaders(Tab, Node, LLQ) ->
 add_active_replica(Tab, Node) ->
     add_active_replica(Tab, Node, val({Tab, cstruct})).
 
-add_active_replica(Tab, Node, Cs = #cstruct{access_mode = AccessMode}) ->
+add_active_replica(Tab, Node, Cs = #cstruct{}) ->
     Storage = mnesia_lib:schema_cs_to_storage_type(Node, Cs),
+    AccessMode = Cs#cstruct.access_mode,
     add_active_replica(Tab, Node, Storage, AccessMode).
 
 %% Block table primitives
@@ -1763,8 +1765,8 @@ get_workers(Timeout) ->
 	Pid ->
 	    Pid ! {self(), get_state},
 	    receive
-		{?SERVER_NAME, #state{dumper_pid = DumperPid} = State} ->
-		    {workers, get_loaders(State), get_senders(State), DumperPid}
+		{?SERVER_NAME, State = #state{}} ->
+		    {workers, get_loaders(State), get_senders(State), State#state.dumper_pid}
 	    after Timeout ->
 		    {timeout, Timeout}
 	    end
@@ -1837,11 +1839,11 @@ reply(ReplyTo, Reply) ->
 %% Worker management
 
 %% Returns new State
-add_worker(#dump_log{initiated_by = InitBy,
-		     opt_reply_to = OptReplyTo} = Worker, State) ->
+add_worker(Worker = #dump_log{}, State) ->
+    InitBy = Worker#dump_log.initiated_by,
     Queue = State#state.dumper_queue,
-    case lists:keymember(InitBy, InitBy, Queue) of
-	true when OptReplyTo =:= undefined ->
+    case lists:keymember(InitBy, #dump_log.initiated_by, Queue) of
+	true when Worker#dump_log.opt_reply_to == undefined ->
 	    %% The same threshold has been exceeded again,
 	    %% before we have had the possibility to
 	    %% process the older one.
@@ -1854,32 +1856,32 @@ add_worker(#dump_log{initiated_by = InitBy,
     Queue2 = Queue ++ [Worker],
     State2 = State#state{dumper_queue = Queue2},
     opt_start_worker(State2);
-add_worker(#schema_commit_lock{} = Worker, State) ->
+add_worker(Worker = #schema_commit_lock{}, State) ->
     Queue = State#state.dumper_queue,
     Queue2 = Queue ++ [Worker],
     State2 = State#state{dumper_queue = Queue2},
     opt_start_worker(State2);
-add_worker(#net_load{table = Table} = Worker, State) ->
-    opt_start_worker(add_loader(Table, Worker, State));
+add_worker(Worker = #net_load{}, State) ->
+    opt_start_worker(add_loader(Worker#net_load.table,Worker,State));
 add_worker(Worker = #send_table{}, State) ->
     Queue = State#state.sender_queue,
     State2 = State#state{sender_queue = Queue ++ [Worker]},
     opt_start_worker(State2);
-add_worker(#disc_load{table = Table} = Worker, State) ->
-    opt_start_worker(add_loader(Table, Worker, State));
+add_worker(Worker = #disc_load{}, State) ->
+    opt_start_worker(add_loader(Worker#disc_load.table,Worker,State));
 % Block controller should be used for upgrading mnesia.
-add_worker(#block_controller{} = Worker, State) ->
+add_worker(Worker = #block_controller{}, State) -> 
     Queue = State#state.dumper_queue,
     Queue2 = [Worker | Queue],
     State2 = State#state{dumper_queue = Queue2},
     opt_start_worker(State2).
 
-add_loader(Tab,Worker, #state{loader_queue = LQ0} = State) ->
+add_loader(Tab,Worker,State = #state{loader_queue=LQ0}) ->
     case gb_trees:is_defined(Tab, LQ0) of
 	true -> State;
 	false -> 
-	    LQ = gb_trees:insert(Tab, Worker, LQ0),
-	    State#state{loader_queue = LQ}
+	    LQ=gb_trees:insert(Tab, Worker, LQ0),
+	    State#state{loader_queue=LQ}
     end.
 
 %% Optionally start a worker
@@ -1887,7 +1889,7 @@ add_loader(Tab,Worker, #state{loader_queue = LQ0} = State) ->
 %% Dumpers and loaders may run simultaneously
 %% but neither of them may run during schema commit.
 %% Loaders may not start if a schema commit is enqueued.
-opt_start_worker(#state{is_stopping = true} = State) ->
+opt_start_worker(State) when State#state.is_stopping == true ->
     State;
 opt_start_worker(State) ->
     %% Prioritize dumper and schema commit
@@ -1948,7 +1950,7 @@ opt_start_sender2([Sender|R], Pids, Kept, LoaderQ) ->
     Active = val({Tab, active_replicas}),
     IgotIt = lists:member(node(), Active),    
     IsLoading = lists:any(fun({_Pid,Loader}) -> 
-				  Tab =:= element(#net_load.table, Loader)
+				  Tab == element(#net_load.table, Loader)
 			  end, LoaderQ),
     if 
 	IgotIt, IsLoading  ->
@@ -1964,7 +1966,7 @@ opt_start_sender2([Sender|R], Pids, Kept, LoaderQ) ->
 	    opt_start_sender2(R,Pids, Kept, LoaderQ)
     end.
 
-opt_start_loader(#state{loader_queue = LoaderQ, dumper_queue = SchemaQ} = State) ->
+opt_start_loader(State = #state{loader_queue = LoaderQ}) ->
     Current = get_loaders(State),
     Max = max_loaders(),
     case gb_trees:is_empty(LoaderQ) of
@@ -1972,8 +1974,9 @@ opt_start_loader(#state{loader_queue = LoaderQ, dumper_queue = SchemaQ} = State)
 	    State;
 	_ when length(Current) >= Max -> 
 	    State;
-	false ->
-	    case lists:keymember(schema_commit_lock, 1, SchemaQ) of
+	false -> 
+	    SchemaQueue = State#state.dumper_queue,
+	    case lists:keymember(schema_commit_lock, 1, SchemaQueue) of
 		false ->
 		    case pick_next(LoaderQ) of
 			{none,Rest} ->
@@ -2057,10 +2060,10 @@ load_table_fun(#net_load{cstruct=Cs, table=Tab, reason=Reason, opt_reply_to=Repl
 			reply = {loaded, ok}
 		       },
     if
-	ReadNode =:= node() ->
+	ReadNode == node() ->
 	    %% Already loaded locally
 	    fun() -> Done end;
-	LocalC =:= true ->
+	LocalC == true ->
 	    fun() ->
 		    Res = mnesia_loader:disc_load_table(Tab, load_local_content),
 		    Done#loader_done{reply = Res, needs_announce = true, needs_sync = true}

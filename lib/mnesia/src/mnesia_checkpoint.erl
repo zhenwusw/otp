@@ -122,14 +122,15 @@ stop() ->
 		  checkpoints()),
     ok.
 
-tm_prepare(#checkpoint_args{name = Name} = Cp) ->
+tm_prepare(Cp) when is_record(Cp, checkpoint_args) ->
+    Name = Cp#checkpoint_args.name,
     case lists:member(Name, checkpoints()) of
 	false ->
 	    start_retainer(Cp);
 	true ->
 	    {error, {already_exists, Name, node()}}
     end;
-tm_prepare(#checkpoint{} = Cp) ->
+tm_prepare(Cp) when is_record(Cp, checkpoint) ->
     %% Node with old protocol sent an old checkpoint record
     %% and we have to convert it
     case convert_cp_record(Cp) of
@@ -478,7 +479,7 @@ select_writers(Cp, Tab) ->
 	    end
     end.
 
-filter_remote(#checkpoint_args{allow_remote = true}, Writers) ->
+filter_remote(Cp, Writers) when Cp#checkpoint_args.allow_remote == true ->
     Writers;
 filter_remote(_Cp, Writers) ->
     This = node(),
@@ -905,8 +906,9 @@ retainer_loop(Cp) ->
 	    sys:handle_system_msg(Msg, From, no_parent, ?MODULE, [], Cp)
     end.
 
-maybe_activate(#checkpoint_args{is_activated = false,
-				wait_for_old = []} = Cp) ->
+maybe_activate(Cp)
+        when Cp#checkpoint_args.wait_for_old == [],
+             Cp#checkpoint_args.is_activated == false ->
     Cp#checkpoint_args{pending_tab = undefined, is_activated = true};
 maybe_activate(Cp) ->
     Cp.
@@ -1260,7 +1262,7 @@ convert_cp_record(Cp) when is_record(Cp, checkpoint_args) ->
 		  error
 	  end,
     if
-	ROD =:= error ->
+	ROD == error ->
 	    {error, {"Old node cannot handle new checkpoint protocol",
 		     ram_overrides_dump}};
 	true ->

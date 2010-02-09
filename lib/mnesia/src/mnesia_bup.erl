@@ -129,7 +129,7 @@ abort_restore(R, What, Args, Reason) ->
     Opaque = R#restore.bup_data,
     dbg_out("Restore aborted. ~p:~p~p -> ~p~n",
             [Mod, What, Args, Reason]),
-    catch Mod:close_read(Opaque),
+    catch apply(Mod, close_read, [Opaque]),
     throw({error, Reason}).
             
 fallback_to_schema() ->
@@ -218,12 +218,13 @@ verify_header(RawSchema) ->
     {error, {"Missing header. Cannot be used as backup.", catch hd(RawSchema)}}.
 
 refresh_cookie(Schema, NewCookie) ->
-    case lists:keyfind(schema, 2, Schema) of
-        {schema, schema, List} ->
+    case lists:keysearch(schema, 2, Schema) of
+        {value, {schema, schema, List}} ->
             Cs = mnesia_schema:list2cs(List),
             Cs2 = Cs#cstruct{cookie = NewCookie},
             Item = {schema, schema, mnesia_schema:cs2list(Cs2)},
             lists:keyreplace(schema, 2, Schema, Item);
+        
         false ->
             Reason = "No schema found. Cannot be used as backup.",
             throw({error, {Reason, Schema}})
@@ -251,8 +252,8 @@ convert_schema(Latest, Schema) ->
 
 %% Backward compatibility for 0.1
 convert_0_1(Schema) ->
-    case lists:keyfind(schema, 2, Schema) of
-        {schema, schema, List} ->
+    case lists:keysearch(schema, 2, Schema) of
+        {value, {schema, schema, List}} ->
             Schema2 = lists:keydelete(schema, 2, Schema),
             Cs = mnesia_schema:list2cs(List),
             convert_0_1(Schema2, [], Cs);
@@ -270,8 +271,8 @@ convert_0_1([{schema, version, Version} | Schema], Acc, Cs) ->
     convert_0_1(Schema, Acc, Cs#cstruct{version = Version});
 convert_0_1([{schema, Tab, Def} | Schema], Acc, Cs) ->
     Head = 
-        case lists:keyfind(index, 1, Def) of
-            {index, PosList} ->
+        case lists:keysearch(index, 1, Def) of
+            {value, {index, PosList}} ->
                 %% Remove the snmp "index"
                 P = PosList -- [snmp],
                 Def2 = lists:keyreplace(index, 1, Def, {index, P}),
@@ -287,8 +288,8 @@ convert_0_1([], Acc, Cs) ->
 
 %% Returns Val or throw error
 lookup_schema(Key, Schema) ->
-    case lists:keyfind(Key, 2, Schema) of
-        {schema, Key, Val} -> Val;
+    case lists:keysearch(Key, 2, Schema) of
+        {value, {schema, Key, Val}} -> Val;
         false -> throw({error, {"Cannot lookup", Key}})
     end.
 
@@ -459,17 +460,19 @@ atom_list([]) ->
     
 do_install_fallback(FA) ->
     Pid = spawn_link(?MODULE, install_fallback_master, [self(), FA]),
-    receive
-        {'EXIT', Pid, Reason} -> % if appl has trapped exit
-	    {error, {'EXIT', Reason}};
-	{Pid, Res2} ->
-	    case Res2 of
-		{ok, _} ->
-		    ok;
-		{error, Reason} ->
-		    {error, {"Cannot install fallback", Reason}}
-	    end
-    end.
+    Res = 
+        receive
+            {'EXIT', Pid, Reason} -> % if appl has trapped exit
+                {error, {'EXIT', Reason}};
+            {Pid, Res2} ->
+                case Res2 of
+                    {ok, _} ->
+                        ok;
+                    {error, Reason} ->
+                        {error, {"Cannot install fallback", Reason}}
+                end
+        end,
+    Res.
 
 install_fallback_master(ClientPid, FA) ->
     process_flag(trap_exit, true),
@@ -567,9 +570,9 @@ fallback_bup() -> mnesia_lib:dir(fallback_name()).
 fallback_tmp_name() -> "FALLBACK.TMP".
 %% fallback_full_tmp_name() -> mnesia_lib:dir(fallback_tmp_name()).
 
--spec fallback_receiver(_, _) -> no_return().
 fallback_receiver(Master, FA) ->
     process_flag(trap_exit, true),
+    
     case catch register(mnesia_fallback, self()) of
         {'EXIT', _} ->
             Reason = {already_exists, node()},
@@ -978,9 +981,9 @@ do_uninstall_fallback(FA) ->
             {error, Reason}
     end.
 
--spec uninstall_fallback_master(pid(), _) -> no_return().
 uninstall_fallback_master(ClientPid, FA) ->
     process_flag(trap_exit, true),
+
     FA2 = check_fallback_dir(ClientPid, FA), % May exit
     Bup = FA2#fallback_args.fallback_bup,
     case fallback_to_schema(Bup) of
@@ -1141,7 +1144,7 @@ do_traverse_backup(ClientPid, Source, SourceMod, Target, TargetMod, Fun, Acc) ->
                 end;            
             {ok, {iter, _, Acc2, _, _}} ->
                 {ok, Acc2};
-            {error, Reason} when TargetMod =/= read_only ->
+            {error, Reason} when TargetMod =/= read_only->
                 catch do_apply(TargetMod, abort_write, [Iter], Iter),
                 {error, {"Backup traversal failed", Reason}};
             {error, Reason} ->
@@ -1180,3 +1183,4 @@ filter_foldl(Fun, Acc, [Head|Tail]) ->
     end;
 filter_foldl(_Fun, Acc, []) ->
     {[], Acc}.
+
