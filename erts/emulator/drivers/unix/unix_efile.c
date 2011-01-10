@@ -22,7 +22,7 @@
 #ifdef HAVE_CONFIG_H
 #  include "config.h"
 #endif
-#ifdef HAVE_POSIX_FALLOCATE
+#if defined(HAVE_POSIX_FALLOCATE) && !defined(__sun) && !defined(__sun__)
 #define _XOPEN_SOURCE 600
 #endif
 #ifndef _GNU_SOURCE

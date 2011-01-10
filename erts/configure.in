@@ -1097,7 +1097,9 @@ dnl * Old glibcs have broken posix_fallocate(). Make sure not to use it.
 dnl * It may also be broken in AIX.
 AC_CACHE_CHECK([whether posix_fallocate() works],i_cv_posix_fallocate_works,[
     AC_TRY_RUN([
+        #if !defined(__sun) && !defined(__sun__)
         #define _XOPEN_SOURCE 600
+        #endif
         #include <stdio.h>
         #include <stdlib.h>
         #include <fcntl.h>
