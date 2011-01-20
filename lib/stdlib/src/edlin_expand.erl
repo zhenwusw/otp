@@ -120,7 +120,12 @@ format_col([], _, _, Acc) ->
 
 field_width(L) -> field_width(L, 0).
 
-field_width([{H,_}|T], W) ->
+field_width([{H, I}|T], W) when is_integer(I) ->
+    case length(H)+length(integer_to_list(I))+1 of
+ 	L when L > W -> field_width(T, L);
+ 	_ -> field_width(T, W)
+    end;
+field_width([{H, _}|T], W) ->
     case length(H) of
  	L when L > W -> field_width(T, L);
  	_ -> field_width(T, W)
@@ -130,10 +135,8 @@ field_width([H|T], W) ->
  	L when L > W -> field_width(T, L);
  	_ -> field_width(T, W)
     end;
-field_width([], W) when W < 40 ->
-    W + 4;
-field_width([], _) ->
-    40.
+field_width([], W) ->
+    W+2.
 
 longest_common_head([]) ->
     no;
