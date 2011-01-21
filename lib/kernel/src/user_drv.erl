@@ -118,7 +118,11 @@ server1(Iport, Oport, Shell) ->
 	case init:get_argument(remsh) of
 	    {ok,[[Node]]} ->
 		RShell = {list_to_atom(Node),shell,start,[]},
-		RGr = group:start(self(), RShell),
+		RGr = start_remote_shell(RShell),
+		{RGr,RShell};
+	    {ok,[[Node,Shell2]]} ->
+		RShell = {list_to_atom(Node),list_to_atom(Shell2),start,[]},
+		RGr = start_remote_shell(RShell),
 		{RGr,RShell};
 	    E when E =:= error ; E =:= {ok,[[]]} ->
 		{group:start(self(), Shell),Shell}
@@ -365,22 +369,24 @@ switch_cmd({ok,[{atom,_,s}],_}, Iport, Oport, Gr0) ->
 switch_cmd({ok,[{atom,_,r}],_}, Iport, Oport, Gr0) ->
     case is_alive() of
 	true ->
-	    Node = pool:get_node(),
-	    Pid = group:start(self(), {Node,shell,start,[]}),
-	    Gr = gr_add_cur(Gr0, Pid, {Node,shell,start,[]}),
+	    RShell = {pool:get_node(),shell,start,[]},
+	    Pid = start_remote_shell(RShell),
+	    Gr = gr_add_cur(Gr0, Pid, RShell),
 	    switch_loop(Iport, Oport, Gr);
 	false ->
 	    io_request({put_chars,unicode,"Not alive\n"}, Iport, Oport),
 	    switch_loop(Iport, Oport, Gr0)
     end;
 switch_cmd({ok,[{atom,_,r},{atom,_,Node}],_}, Iport, Oport, Gr0) ->
-    Pid = group:start(self(), {Node,shell,start,[]}),
-    Gr = gr_add_cur(Gr0, Pid, {Node,shell,start,[]}),
+    RShell = {Node,shell,start,[]},
+    Pid = start_remote_shell(RShell),
+    Gr = gr_add_cur(Gr0, Pid, RShell),
     switch_loop(Iport, Oport, Gr);
 switch_cmd({ok,[{atom,_,r},{atom,_,Node},{atom,_,Shell}],_},
 	   Iport, Oport, Gr0) ->
-    Pid = group:start(self(), {Node,Shell,start,[]}),
-    Gr = gr_add_cur(Gr0, Pid, {Node,Shell,start,[]}),
+    RShell = {Node,Shell,start,[]},
+    Pid = start_remote_shell(RShell),
+    Gr = gr_add_cur(Gr0, Pid, RShell),
     switch_loop(Iport, Oport, Gr);
 switch_cmd({ok,[{atom,_,q}],_}, Iport, Oport, Gr) ->
     case erlang:system_info(break_ignored) of
@@ -404,6 +410,12 @@ switch_cmd({ok,_Ts,_}, Iport, Oport, Gr) ->
 switch_cmd(_Ts, Iport, Oport, Gr) ->
     io_request({put_chars,unicode,"Illegal input\n"}, Iport, Oport),
     switch_loop(Iport, Oport, Gr).
+
+start_remote_shell({Node, _,_,_}=RShell) ->
+    ExFun = fun(B)->
+		    rpc:call(Node,edlin_expand,expand,[B])
+	    end,
+    group:start(self(), RShell, [{expand_fun, ExFun}]).
 
 unknown_group(Iport, Oport, Gr) ->
     io_request({put_chars,unicode,"Unknown job\n"}, Iport, Oport),
