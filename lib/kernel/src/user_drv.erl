@@ -369,10 +369,16 @@ switch_cmd({ok,[{atom,_,s}],_}, Iport, Oport, Gr0) ->
 switch_cmd({ok,[{atom,_,r}],_}, Iport, Oport, Gr0) ->
     case is_alive() of
 	true ->
-	    RShell = {pool:get_node(),shell,start,[]},
-	    Pid = start_remote_shell(RShell),
-	    Gr = gr_add_cur(Gr0, Pid, RShell),
-	    switch_loop(Iport, Oport, Gr);
+	    case catch pool:get_node() of
+		{'EXIT', _} ->
+		    io_request({put_chars,unicode,"No pool\n"}, Iport, Oport),
+		    switch_loop(Iport, Oport, Gr0);
+		Node ->
+		    RShell = {pool:get_node(),shell,start,[]},
+		    Pid = start_remote_shell(RShell),
+		    Gr = gr_add_cur(Gr0, Pid, RShell),
+		    switch_loop(Iport, Oport, Gr)
+	    end;
 	false ->
 	    io_request({put_chars,unicode,"Not alive\n"}, Iport, Oport),
 	    switch_loop(Iport, Oport, Gr0)
