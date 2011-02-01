@@ -363,7 +363,7 @@ void erts_incremental_gc(Process* p, int need, Eterm* objv, int nobj)
         max_global_minor_time = gc_time;
 
     pause_times[(((gc_time * 1000) < MAX_PAUSE_TIME) ?
-                 (int)(gc_time * 1000) :
+                 (gc_time * 1000) :
                  MAX_PAUSE_TIME - 1)]++;
 #endif
     //BM_MMU_INIT();
@@ -1296,7 +1296,7 @@ static void inc_major_gc(Process *p, int need, Eterm* objv, int nobj)
       max_global_major_time = old_gc_time;
 
     if ((old_gc_time * 1000) < MAX_PAUSE_TIME)
-        pause_times_old[(int)(old_gc_time * 1000)]++;
+        pause_times_old[(old_gc_time * 1000)]++;
     else
         pause_times_old[MAX_PAUSE_TIME - 1]++;
 #endif
