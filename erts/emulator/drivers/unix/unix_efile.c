@@ -33,6 +33,11 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #endif
+/* TODO: check which to use */
+/* #if defined(__linux__) || defined(__solaris__) */
+#if defined(__linux__) || (defined(__SVR4) && defined(__sun))
+#include <sys/sendfile.h>
+#endif
 
 #if defined(__APPLE__) && defined(__MACH__) && !defined(__DARWIN__)
 #define DARWIN 1
@@ -1464,3 +1469,56 @@ efile_fadvise(Efile_error* errInfo, int fd, Sint64 offset,
     return check_error(0, errInfo);
 #endif
 }
+
+#ifdef HAVE_SENDFILE
+int
+efile_sendfile(Efile_error* errInfo, int in_fd, int out_fd,
+	       off_t *offset, size_t *count)
+{
+/* TODO: check which to use */
+/* #if defined(__linux__) || defined(__solaris__) */
+#if defined(__linux__) || (defined(__SVR4) && defined(__sun))
+    ssize_t retval;
+    /* TODO: driver_select()? loop limit? */
+    do {
+        retval = sendfile(out_fd, in_fd, offset, *count);
+    } while (retval < 0 && (errno == EINTR || errno == EAGAIN));
+    if (retval >= 0) {
+	if (retval != *count) {
+	    *count = retval;
+	    retval = -1;
+	    errno = EAGAIN;
+	} else {
+	    *count = retval;
+	}
+    }
+    return check_error(retval == -1 ? -1 : 0, errInfo);
+/* TODO: check which to use */
+/* #elif defined(__APPLE__) && defined(__MACH__) */
+#elif defined(DARWIN)
+    off_t len = *count;
+    int retval;
+    do {
+        retval = sendfile(in_fd, out_fd, *offset, &len, NULL, 0);
+    } while (retval < 0 && errno == EINTR);
+    *count = len;
+    return check_error(retval == -1 ? -1 : 0, errInfo);
+#elif defined(__FreeBSD__)
+    off_t len = 0;
+    int retval;
+    do {
+        retval = sendfile(in_fd, out_fd, *offset, *count, NULL, &len, 0);
+    } while (retval < 0 && errno == EINTR);
+    *count = len;
+    return check_error(retval == -1 ? -1 : 0, errInfo);
+#endif
+}
+#else /* no sendfile() */
+int
+efile_sendfile(Efile_error* errInfo, int in_fd, int out_fd,
+	       off_t *offset, size_t *count)
+{
+    errno = ENOTSUP;
+    return check_error(-1, errInfo);
+}
+#endif
